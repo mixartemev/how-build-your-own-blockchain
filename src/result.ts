@@ -6,6 +6,10 @@ import * as fs from "fs";
 import * as path from "path";
 import deepEqual = require("deep-equal");
 
+import * as uuidv4 from "uuid/v4";
+import * as express from "express";
+import * as bodyParser from "body-parser";
+
 export type Address = string;
 
 export class Transaction {
@@ -134,7 +138,7 @@ export class Blockchain {
     }
 
     // Mines for block.
-    public mineBlock(transactions: Array<Transaction>): Block {
+    private mineBlock(transactions: Array<Transaction>): Block {
         // Create a new block which will "point" to the last block.
         const lastBlock = this.getLastBlock();
         const newBlock = new Block(lastBlock.blockNumber + 1, transactions, Blockchain.now(), 0, lastBlock.sha256());
@@ -185,9 +189,67 @@ export class Blockchain {
     }
 }
 
-const blockchain = new Blockchain("node123");
+// Web server
+const PORT = 3000;
+const app = express();
+const nodeId = uuidv4();
+const blockchain = new Blockchain(nodeId);
 
-blockchain.submitTransaction("Alice", "Bob", 1000);
-blockchain.submitTransaction("Alice", "Eve", 12345);
+// Set up bodyParser:
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error(err.stack);
 
-const block = blockchain.createBlock();
+    res.status(500);
+});
+
+// Show all the blocks.
+app.get("/blocks", (req: express.Request, res: express.Response) => {
+    res.json(serialize(blockchain.blocks));
+});
+
+// Show specific block.
+app.get("/blocks/:id", (req: express.Request, res: express.Response) => {
+    const id = Number(req.params.id);
+    if (isNaN(id)) {
+        res.json("Invalid parameter!");
+        res.status(500);
+        return;
+    }
+
+    if (id >= blockchain.blocks.length) {
+        res.json(`Block #${id} wasn't found!`);
+        res.status(404);
+        return;
+    }
+
+    res.json(serialize(blockchain.blocks[id]));
+});
+
+// Show all transactions in the transaction pool.
+app.get("/transactions", (req: express.Request, res: express.Response) => {
+    res.json(serialize(blockchain.transactionPool));
+});
+
+app.post("/transactions", (req: express.Request, res: express.Response) => {
+    const senderAddress = req.body.senderAddress;
+    const recipientAddress = req.body.recipientAddress;
+    const value = Number(req.body.value);
+
+    if (!senderAddress || !recipientAddress || !value)  {
+        res.json("Invalid parameters!");
+        res.status(500);
+        return;
+    }
+
+    blockchain.submitTransaction(senderAddress, recipientAddress, value);
+
+    res.json(`Transaction from ${senderAddress} to ${recipientAddress} was added successfully`);
+});
+
+if (!module.parent) {
+    app.listen(PORT);
+
+    console.log(`Web server started on port ${PORT}. Node ID is: ${nodeId}`);
+}
