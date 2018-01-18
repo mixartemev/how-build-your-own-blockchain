@@ -53,6 +53,9 @@ export class Blockchain {
     public static readonly DIFFICULTY = 4;
     public static readonly TARGET = 2 ** (256 - Blockchain.DIFFICULTY);
 
+    public static readonly MINING_SENDER = "<COINBASE>";
+    public static readonly MINING_REWARD = 50;
+
     public nodeId: string;
     public blocks: Array<Block>;
     public transactionPool: Array<Transaction>;
@@ -165,8 +168,12 @@ export class Blockchain {
 
     // Creates new block on the blockchain.
     public createBlock(): Block {
+        // Add a "coinbase" transaction granting us the mining reward!
+        const transactions = [new Transaction(Blockchain.MINING_SENDER, this.nodeId, Blockchain.MINING_REWARD),
+            ...this.transactionPool];
+
         // Mine the transactions in a new block.
-        const newBlock = this.mineBlock(this.transactionPool);
+        const newBlock = this.mineBlock(transactions);
 
         // Append the new block to the blockchain.
         this.blocks.push(newBlock);
@@ -225,6 +232,13 @@ app.get("/blocks/:id", (req: express.Request, res: express.Response) => {
     }
 
     res.json(serialize(blockchain.blocks[id]));
+});
+
+app.post("/blocks/mine", (req: express.Request, res: express.Response) => {
+    // Mine the new block.
+    const newBlock = blockchain.createBlock();
+
+    res.json(`Mined new block #${newBlock.blockNumber}`);
 });
 
 // Show all transactions in the transaction pool.
