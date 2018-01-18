@@ -9,6 +9,10 @@ import deepEqual = require("deep-equal");
 import * as uuidv4 from "uuid/v4";
 import * as express from "express";
 import * as bodyParser from "body-parser";
+import { URL } from "url";
+
+import { Set } from "typescript-collections";
+import * as parseArgs from "minimist";
 
 export type Address = string;
 
@@ -46,6 +50,20 @@ export class Block {
     }
 }
 
+export class Node {
+    public id: string;
+    public url: URL;
+
+    constructor(id: string, url: URL) {
+        this.id = id;
+        this.url = url;
+    }
+
+    public toString(): string {
+        return `${this.id}:${this.url}`;
+    }
+}
+
 export class Blockchain {
     // Let's define that our "genesis" block as an empty block, starting from the January 1, 1970 (midnight "UTC").
     public static readonly GENESIS_BLOCK = new Block(0, [], 0, 0, "fiat lux");
@@ -57,18 +75,25 @@ export class Blockchain {
     public static readonly MINING_REWARD = 50;
 
     public nodeId: string;
+    public nodes: Set<Node>;
     public blocks: Array<Block>;
     public transactionPool: Array<Transaction>;
     private storagePath: string;
 
     constructor(nodeId: string) {
         this.nodeId = nodeId;
+        this.nodes = new Set<Node>();
         this.transactionPool = [];
 
         this.storagePath = path.resolve(__dirname, "../", `${this.nodeId}.blockchain`);
 
         // Load the blockchain from the storage.
         this.load();
+    }
+
+    // Registers new node.
+    public register(node: Node): boolean {
+        return this.nodes.add(node);
     }
 
     // Saves the blockchain to the disk.
@@ -196,10 +221,11 @@ export class Blockchain {
     }
 }
 
-// Web server
-const PORT = 3000;
+// Web server:
+const ARGS = parseArgs(process.argv.slice(2));
+const PORT = ARGS.port || 3000;
 const app = express();
-const nodeId = uuidv4();
+const nodeId = ARGS.id || uuidv4();
 const blockchain = new Blockchain(nodeId);
 
 // Set up bodyParser:
@@ -260,6 +286,30 @@ app.post("/transactions", (req: express.Request, res: express.Response) => {
     blockchain.submitTransaction(senderAddress, recipientAddress, value);
 
     res.json(`Transaction from ${senderAddress} to ${recipientAddress} was added successfully`);
+});
+
+app.get("/nodes", (req: express.Request, res: express.Response) => {
+    res.json(serialize(blockchain.nodes.toArray()));
+});
+
+app.post("/nodes", (req: express.Request, res: express.Response) => {
+    const id = req.body.id;
+    const url = new URL(req.body.url);
+
+    if (!id || !url)  {
+        res.json("Invalid parameters!");
+        res.status(500);
+        return;
+    }
+
+    const node = new Node(id, url);
+
+    if (blockchain.register(node)) {
+        res.json(`Registered node: ${node}`);
+    } else {
+        res.json(`Node ${node} already exists!`);
+        res.status(500);
+    }
 });
 
 if (!module.parent) {
