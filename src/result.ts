@@ -95,8 +95,17 @@ export class Blockchain {
     }
 
     // Creates new block on the blockchain.
-    public createBlock() {
-        // TBD
+    public createBlock(): Block {
+        // Mine the transactions in a new block.
+        const newBlock = this.mineBlock(this.transactionPool);
+
+        // Append the new block to the blockchain.
+        this.blocks.push(newBlock);
+
+        // Remove the mined transactions.
+        this.transactionPool = [];
+
+        return newBlock;
     }
 
     public getLastBlock(): Block {
@@ -110,8 +119,11 @@ export class Blockchain {
 
 const blockchain = new Blockchain("node123");
 
-const txn1 = new Transaction("Alice", "Bob", 1000);
-const txn2 = new Transaction("Alice", "Eve", 12345);
-const block = blockchain.mineBlock([txn1, txn2]);
+blockchain.submitTransaction("Alice", "Bob", 1000);
+blockchain.submitTransaction("Alice", "Eve", 12345);
+
+const block = blockchain.createBlock();
+
 console.log(`Mined block: ${JSON.stringify(serialize(block))}`);
 console.log(`Mined block with: ${block.sha256()}`);
+
