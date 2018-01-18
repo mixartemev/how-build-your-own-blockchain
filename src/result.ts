@@ -1,5 +1,6 @@
 import { sha256 } from "js-sha256";
 import { serialize } from "serializer.ts/Serializer";
+import BigNumber from "bignumber.js";
 
 export type Address = string;
 
@@ -38,14 +39,54 @@ export class Block {
 }
 
 export class Blockchain {
+    // Let's define that our "genesis" block as an empty block, starting from now.
+    public static readonly GENESIS_BLOCK = new Block(0, [], Blockchain.now(), 0, "");
+
+    public static readonly DIFFICULTY = 4;
+    public static readonly TARGET = 2 ** (256 - Blockchain.DIFFICULTY);
+
     public nodeId: string;
     public blocks: Array<Block>;
     public transactionPool: Array<Transaction>;
 
     constructor(nodeId: string) {
         this.nodeId = nodeId;
-        this.blocks = [];
+        this.blocks = [Blockchain.GENESIS_BLOCK];
         this.transactionPool = [];
+    }
+
+    // Validates PoW.
+    public static isPoWValid(pow: string): boolean {
+        try {
+            if (!pow.startsWith("0x")) {
+                pow = `0x${pow}`;
+            }
+
+            return new BigNumber(pow).lessThanOrEqualTo(Blockchain.TARGET.toString());
+        } catch {
+            return false;
+        }
+    }
+
+    // Mines for block.
+    public mineBlock(transactions: Array<Transaction>): Block {
+        // Create a new block which will "point" to the last block.
+        const lastBlock = this.getLastBlock();
+        const newBlock = new Block(lastBlock.blockNumber + 1, transactions, Blockchain.now(), 0, lastBlock.sha256());
+
+        while (true) {
+            const pow = newBlock.sha256();
+            console.log(`Mining #${newBlock.blockNumber}: nonce: ${newBlock.nonce}, pow: ${pow}`);
+
+            if (Blockchain.isPoWValid(pow)) {
+                console.log(`Found valid POW: ${pow}!`);
+                break;
+            }
+
+            newBlock.nonce++;
+        }
+
+        return newBlock;
     }
 
     // Submits new transaction
@@ -57,4 +98,20 @@ export class Blockchain {
     public createBlock() {
         // TBD
     }
+
+    public getLastBlock(): Block {
+        return this.blocks[this.blocks.length - 1];
+    }
+
+    public static now(): number {
+        return Math.round(new Date().getTime() / 1000);
+    }
 }
+
+const blockchain = new Blockchain("node123");
+
+const txn1 = new Transaction("Alice", "Bob", 1000);
+const txn2 = new Transaction("Alice", "Eve", 12345);
+const block = blockchain.mineBlock([txn1, txn2]);
+console.log(`Mined block: ${JSON.stringify(serialize(block))}`);
+console.log(`Mined block with: ${block.sha256()}`);
