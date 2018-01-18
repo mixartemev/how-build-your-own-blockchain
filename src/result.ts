@@ -1,6 +1,9 @@
 import { sha256 } from "js-sha256";
-import { serialize } from "serializer.ts/Serializer";
+import { serialize, deserialize } from "serializer.ts/Serializer";
 import BigNumber from "bignumber.js";
+
+import * as fs from "fs";
+import * as path from "path";
 
 export type Address = string;
 
@@ -39,8 +42,8 @@ export class Block {
 }
 
 export class Blockchain {
-    // Let's define that our "genesis" block as an empty block, starting from now.
-    public static readonly GENESIS_BLOCK = new Block(0, [], Blockchain.now(), 0, "");
+    // Let's define that our "genesis" block as an empty block, starting from the January 1, 1970 (midnight "UTC").
+    public static readonly GENESIS_BLOCK = new Block(0, [], 0, 0, "fiat lux");
 
     public static readonly DIFFICULTY = 4;
     public static readonly TARGET = 2 ** (256 - Blockchain.DIFFICULTY);
@@ -48,11 +51,34 @@ export class Blockchain {
     public nodeId: string;
     public blocks: Array<Block>;
     public transactionPool: Array<Transaction>;
+    private storagePath: string;
 
     constructor(nodeId: string) {
         this.nodeId = nodeId;
-        this.blocks = [Blockchain.GENESIS_BLOCK];
         this.transactionPool = [];
+
+        this.storagePath = path.resolve(__dirname, "../", `${this.nodeId}.blockchain`);
+
+        // Load the blockchain from the storage.
+        this.load();
+    }
+
+    // Saves the blockchain to the disk.
+    private save() {
+        fs.writeFileSync(this.storagePath, JSON.stringify(serialize(this.blocks), undefined, 2), "utf8");
+    }
+
+    // Loads the blockchain from the disk.
+    private load() {
+        try {
+            this.blocks = deserialize<Block[]>(Block, JSON.parse(fs.readFileSync(this.storagePath, "utf8")));
+        } catch (err) {
+            if (err.code !== "ENOENT") {
+                throw err;
+            }
+
+            this.blocks = [Blockchain.GENESIS_BLOCK];
+        }
     }
 
     // Validates PoW.
@@ -105,6 +131,9 @@ export class Blockchain {
         // Remove the mined transactions.
         this.transactionPool = [];
 
+        // Save the blockchain to the storage.
+        this.save();
+
         return newBlock;
     }
 
@@ -123,7 +152,3 @@ blockchain.submitTransaction("Alice", "Bob", 1000);
 blockchain.submitTransaction("Alice", "Eve", 12345);
 
 const block = blockchain.createBlock();
-
-console.log(`Mined block: ${JSON.stringify(serialize(block))}`);
-console.log(`Mined block with: ${block.sha256()}`);
-
